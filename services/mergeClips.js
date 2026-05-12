@@ -6,11 +6,9 @@ const ffmpegPath =
 const ffprobe =
   require("ffprobe-static");
 
-const path = require("path");
-
 const fs = require("fs");
 
-
+const path = require("path");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -18,417 +16,174 @@ ffmpeg.setFfprobePath(ffprobe.path);
 
 
 
-// DETECT RENDER
-const isRender =
-  !!process.env.RENDER;
-
-
-
-// GET VIDEO DURATION
-function getClipDuration(clip) {
+async function mergeClips(clips) {
 
   return new Promise((resolve, reject) => {
 
-    ffmpeg.ffprobe(
+    console.log(
+      "\n========== MERGING STARTED ==========\n"
+    );
 
-      clip,
 
-      (err, metadata) => {
 
-        if (err) {
+    const outputPath = path.join(
 
-          reject(err);
+      __dirname,
 
-          return;
-
-        }
-
-        resolve(
-          metadata.format.duration
-        );
-
-      }
+      `../videos/merged-${Date.now()}.mp4`
 
     );
 
-  });
-
-}
 
 
+    // CREATE CONCAT FILE
+    const fileListPath = path.join(
 
-async function mergeClips(clips) {
+      __dirname,
 
-  return new Promise(async (resolve, reject) => {
+      "../videos/filelist.txt"
 
-    try {
-
-      // CREATE VIDEOS FOLDER
-      const videosDir = path.join(
-        __dirname,
-        "../videos"
-      );
+    );
 
 
 
-      if (!fs.existsSync(videosDir)) {
+    // BUILD FILE LIST
+    const fileContent = clips
 
-        fs.mkdirSync(videosDir, {
-          recursive: true
-        });
+      .map((clip) => {
 
-      }
+        // IMPORTANT FOR WINDOWS PATHS
+        const normalized =
+          clip.replace(/\\/g, "/");
 
+        return `file '${normalized}'`;
 
+      })
 
-      const outputPath = path.join(
-
-        videosDir,
-
-        `merged-${Date.now()}.mp4`
-
-      );
+      .join("\n");
 
 
 
-      console.log(
-        "\n========== MERGING STARTED ==========\n"
-      );
+    fs.writeFileSync(
+      fileListPath,
+      fileContent
+    );
 
 
 
-      // =====================================
-      // FAST CLOUD CONCAT (NO TRANSITIONS)
-      // =====================================
+    ffmpeg()
 
-      if (isRender) {
+      .input(fileListPath)
+
+      .inputOptions([
+
+        "-f concat",
+
+        "-safe 0"
+
+      ])
+
+
+
+      .outputOptions([
+
+        "-c:v libx264",
+
+        "-preset ultrafast",
+
+        "-crf 32",
+
+        "-pix_fmt yuv420p"
+
+      ])
+
+
+
+      .on("start", (cmd) => {
 
         console.log(
-          "☁ Render detected → Using FAST concat merge\n"
+          "☁ Render-safe merge started\n"
+        );
+
+        console.log(cmd);
+
+      })
+
+
+
+      .on("progress", (progress) => {
+
+        const percent = Math.floor(
+
+          progress.percent || 0
+
         );
 
 
 
-        const command = ffmpeg();
+        process.stdout.clearLine(0);
+
+        process.stdout.cursorTo(0);
 
 
 
-        clips.forEach((clip) => {
+        process.stdout.write(
 
-          command.input(clip);
+          `🎬 Merge Progress: ${percent}%`
 
-        });
+        );
 
-
-
-        let concatInputs = "";
+      })
 
 
 
-        for (let i = 0; i < clips.length; i++) {
+      .on("end", () => {
 
-          concatInputs += `[${i}:v]`;
+        console.log(
+
+          "\n\n✅ Merge completed\n"
+
+        );
+
+
+
+        // CLEAN FILELIST
+        if (fs.existsSync(fileListPath)) {
+
+          fs.unlinkSync(fileListPath);
 
         }
 
 
 
-        const filter =
-          `${concatInputs}concat=n=${clips.length}:v=1:a=0[outv]`;
+        resolve(outputPath);
 
+      })
 
 
-        command
 
-          .complexFilter(filter)
+      .on("error", (err) => {
 
+        console.log(
+          "\n❌ MERGE ERROR:\n"
+        );
 
+        console.log(err);
 
-          .outputOptions([
 
-            "-map",
 
-            "[outv]",
+        reject(err);
 
-            "-preset ultrafast",
+      })
 
-            "-crf 32",
 
-            "-pix_fmt yuv420p"
 
-          ])
-
-
-
-          .videoCodec("libx264")
-
-
-
-          .on("start", (cmd) => {
-
-            console.log(cmd);
-
-          })
-
-
-
-          .on("progress", (progress) => {
-
-            const percent = Math.floor(
-
-              progress.percent || 0
-
-            );
-
-
-
-            process.stdout.clearLine(0);
-
-            process.stdout.cursorTo(0);
-
-
-
-            process.stdout.write(
-
-              `⚡ Fast Merge: ${percent}%`
-
-            );
-
-          })
-
-
-
-          .on("end", () => {
-
-            console.log(
-
-              "\n\n✅ Fast merge completed\n"
-
-            );
-
-
-
-            resolve(outputPath);
-
-          })
-
-
-
-          .on("error", (err) => {
-
-            console.log(
-
-              "\nMERGE ERROR:\n"
-
-            );
-
-
-
-            console.log(err);
-
-            reject(err);
-
-          })
-
-
-
-          .save(outputPath);
-
-
-
-        return;
-
-      }
-
-
-
-      // =====================================
-      // LOCAL TRANSITION MERGE
-      // =====================================
-
-      console.log(
-        "💻 Local mode → Using cinematic transitions\n"
-      );
-
-
-
-      let command = ffmpeg();
-
-
-
-      clips.forEach((clip) => {
-
-        command.input(clip);
-
-      });
-
-
-
-      // GET DURATIONS
-      const durations = [];
-
-
-
-      for (let i = 0; i < clips.length; i++) {
-
-        const duration =
-          await getClipDuration(clips[i]);
-
-
-
-        durations.push(duration);
-
-      }
-
-
-
-      // BUILD XFADE FILTERS
-      let filter = "";
-
-
-
-      let lastOutput = "[0:v]";
-
-      let offset = durations[0] - 1;
-
-
-
-      for (let i = 1; i < clips.length; i++) {
-
-        const output = `[v${i}]`;
-
-
-
-        filter +=
-
-          `${lastOutput}[${i}:v]` +
-
-          `xfade=transition=fade:` +
-
-          `duration=1:` +
-
-          `offset=${offset}` +
-
-          `${output};`;
-
-
-
-        offset += durations[i] - 1;
-
-        lastOutput = output;
-
-      }
-
-
-
-      filter = filter.slice(0, -1);
-
-
-
-      command
-
-        .complexFilter(filter)
-
-
-
-        .outputOptions([
-
-          "-map",
-
-          lastOutput,
-
-          "-preset ultrafast",
-
-          "-crf 30",
-
-          "-pix_fmt yuv420p"
-
-        ])
-
-
-
-        .videoCodec("libx264")
-
-
-
-        .on("start", (cmd) => {
-
-          console.log(cmd);
-
-        })
-
-
-
-        .on("progress", (progress) => {
-
-          const percent = Math.floor(
-
-            progress.percent || 0
-
-          );
-
-
-
-          process.stdout.clearLine(0);
-
-          process.stdout.cursorTo(0);
-
-
-
-          process.stdout.write(
-
-            `🎬 Transition Merge: ${percent}%`
-
-          );
-
-        })
-
-
-
-        .on("end", () => {
-
-          console.log(
-
-            "\n\n✅ Transition merge completed\n"
-
-          );
-
-
-
-          resolve(outputPath);
-
-        })
-
-
-
-        .on("error", (err) => {
-
-          console.log(
-
-            "\nMERGE ERROR:\n"
-
-          );
-
-
-
-          console.log(err);
-
-          reject(err);
-
-        })
-
-
-
-        .save(outputPath);
-
-    } catch (err) {
-
-      reject(err);
-
-    }
+      .save(outputPath);
 
   });
 
 }
+
+
 
 module.exports = mergeClips;
