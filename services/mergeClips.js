@@ -2,29 +2,47 @@ const ffmpeg = require("fluent-ffmpeg");
 
 const ffmpegPath =
   require("ffmpeg-static");
-
 const ffprobe =
   require("ffprobe-static");
-
-const fs = require("fs");
-
 const path = require("path");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
-
 ffmpeg.setFfprobePath(ffprobe.path);
+
+
+
+// GET VIDEO DURATION
+function getClipDuration(clip) {
+
+  return new Promise((resolve, reject) => {
+
+    ffmpeg.ffprobe(
+      clip,
+      (err, metadata) => {
+
+        if (err) {
+
+          reject(err);
+
+          return;
+        }
+
+        resolve(
+          metadata.format.duration
+        );
+
+      }
+    );
+
+  });
+
+}
 
 
 
 async function mergeClips(clips) {
 
-  return new Promise((resolve, reject) => {
-
-    console.log(
-      "\n========== MERGING STARTED ==========\n"
-    );
-
-
+  return new Promise(async (resolve, reject) => {
 
     const outputPath = path.join(
 
@@ -36,62 +54,90 @@ async function mergeClips(clips) {
 
 
 
-    // CREATE CONCAT FILE
-    const fileListPath = path.join(
-
-      __dirname,
-
-      "../videos/filelist.txt"
-
-    );
+    let command = ffmpeg();
 
 
 
-    // BUILD FILE LIST
-    const fileContent = clips
+    // ADD INPUTS
+    clips.forEach((clip) => {
 
-      .map((clip) => {
+      command.input(clip);
 
-        // IMPORTANT FOR WINDOWS PATHS
-        const normalized =
-          clip.replace(/\\/g, "/");
-
-        return `file '${normalized}'`;
-
-      })
-
-      .join("\n");
+    });
 
 
 
-    fs.writeFileSync(
-      fileListPath,
-      fileContent
-    );
+    // GET DURATIONS
+    const durations = [];
+
+    for (let i = 0; i < clips.length; i++) {
+
+      const duration =
+        await getClipDuration(clips[i]);
+
+      durations.push(duration);
+
+    }
 
 
 
-    ffmpeg()
+    // BUILD XFADE FILTERS
+    let filter = "";
 
-      .input(fileListPath)
 
-      .inputOptions([
 
-        "-f concat",
+    let lastOutput = "[0:v]";
 
-        "-safe 0"
+    let offset = durations[0] - 1;
 
-      ])
+
+
+    for (let i = 1; i < clips.length; i++) {
+
+      const output = `[v${i}]`;
+
+
+
+      filter +=
+
+        `${lastOutput}[${i}:v]` +
+
+        `xfade=transition=fade:` +
+
+        `duration=1:` +
+
+        `offset=${offset}` +
+
+        `${output};`;
+
+
+
+      offset += durations[i] - 1;
+
+      lastOutput = output;
+
+    }
+
+
+
+    // REMOVE LAST ;
+    filter = filter.slice(0, -1);
+
+
+
+    command
+
+      .complexFilter(filter)
 
 
 
       .outputOptions([
 
-        "-c:v libx264",
+        "-map",
+
+        lastOutput,
 
         "-preset ultrafast",
-
-        "-crf 32",
 
         "-pix_fmt yuv420p"
 
@@ -99,10 +145,14 @@ async function mergeClips(clips) {
 
 
 
+      .videoCodec("libx264")
+
+
+
       .on("start", (cmd) => {
 
         console.log(
-          "☁ Render-safe merge started\n"
+          "\n========== TRANSITION MERGE STARTED ==========\n"
         );
 
         console.log(cmd);
@@ -114,23 +164,15 @@ async function mergeClips(clips) {
       .on("progress", (progress) => {
 
         const percent = Math.floor(
-
           progress.percent || 0
-
         );
-
-
 
         process.stdout.clearLine(0);
 
         process.stdout.cursorTo(0);
 
-
-
         process.stdout.write(
-
-          `🎬 Merge Progress: ${percent}%`
-
+          `🎬 Transition Merge: ${percent}%`
         );
 
       })
@@ -140,21 +182,8 @@ async function mergeClips(clips) {
       .on("end", () => {
 
         console.log(
-
-          "\n\n✅ Merge completed\n"
-
+          "\n\n✅ Transition merge completed\n"
         );
-
-
-
-        // CLEAN FILELIST
-        if (fs.existsSync(fileListPath)) {
-
-          fs.unlinkSync(fileListPath);
-
-        }
-
-
 
         resolve(outputPath);
 
@@ -165,12 +194,10 @@ async function mergeClips(clips) {
       .on("error", (err) => {
 
         console.log(
-          "\n❌ MERGE ERROR:\n"
+          "\nMERGE ERROR:\n"
         );
 
         console.log(err);
-
-
 
         reject(err);
 
@@ -183,7 +210,5 @@ async function mergeClips(clips) {
   });
 
 }
-
-
 
 module.exports = mergeClips;

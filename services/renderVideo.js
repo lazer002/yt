@@ -83,9 +83,9 @@ const musicPath =
 
       .videoFilters([
 
-        "scale=720:1280:force_original_aspect_ratio=increase",
+        "scale=1080:1920:force_original_aspect_ratio=increase",
 
-        "crop=720:1280"
+        "crop=1080:1920"
 
       ])
 
