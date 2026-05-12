@@ -3,9 +3,5 @@ node_modules
 .temp
 .next
 dist
-output
 client_secret.json
 token.json
-audio
-videos
-captions
