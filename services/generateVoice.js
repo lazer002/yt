@@ -64,7 +64,7 @@ async function generateVoice(
     // EDGE TTS COMMAND
     const command =
 
-      `python3 -m edge_tts ` +
+      `py -m edge_tts ` +
 
       `--voice "hi-IN-SwaraNeural" ` +
 
