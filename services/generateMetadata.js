@@ -2,14 +2,10 @@ const OpenAI = require("openai");
 
 const client = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
-
   baseURL: "https://api.groq.com/openai/v1",
 });
 
-
-async function generateMetadata(
-  topic
-) {
+async function generateMetadata(topic) {
 
   try {
 
@@ -23,7 +19,7 @@ async function generateMetadata(
           {
             role: "user",
 
-content: `
+            content: `
 
 You are an elite YouTube Shorts viral strategist.
 
@@ -43,7 +39,15 @@ IMPORTANT:
 The metadata should feel like a REAL viral Shorts video,
 not a boring educational upload.
 
-RETURN ONLY VALID JSON:
+RETURN ONLY STRICT VALID JSON.
+
+DO NOT:
+- use markdown
+- use code blocks
+- add explanations
+- add extra text
+
+RETURN FORMAT:
 
 {
   "title": "",
@@ -52,12 +56,11 @@ RETURN ONLY VALID JSON:
 }
 
 TITLE RULES:
-- Hindi only
+- English only
 - Maximum 70 characters
-
 - Emotionally powerful
 - Curiosity-driven
-- Sound cinematic and viral
+- Cinematic and viral
 - Create suspense or emotional tension
 - Make viewers unable to ignore
 - Use psychological triggers:
@@ -66,75 +69,49 @@ TITLE RULES:
 - Avoid generic titles
 - Avoid robotic wording
 - Avoid spammy clickbait
-- Avoid:
-  "Top 10 facts"
-  "आज हम जानेंगे"
-  "Interesting facts"
-
-VIRAL OPTIMIZATION:
-Study the style of high-performing viral YouTube Shorts.
-Use tags commonly associated with viral Hindi Shorts content.
-The metadata should feel similar to videos that get:
-- millions of views
-- high CTR
-- high retention
-- strong emotional reactions
-
-Use viral YouTube Shorts psychology:
-- curiosity gaps
-- fear
-- mystery
-- emotional tension
-- hidden truth
-- impossible scenarios
-- shocking reveals
 
 GOOD TITLE STYLES:
-- "NASA इस रहस्य से डरता है 😨"
-- "महाभारत का ये सच छुपाया गया..."
-- "अगर ये सच है तो इंसान खतरे में हैं 😳"
-- "इस जगह इंसान 5 मिनट भी जिंदा नहीं रह सकता 😨"
-
-TRENDING STYLE:
-Use wording commonly seen in viral Shorts titles,
-but keep it natural and cinematic.
+- "NASA Is Hiding This Terrifying Secret 😨"
+- "Nobody Survived Inside This Temple..."
+- "Scientists Can't Explain This Mystery 😳"
+- "This Place Should Not Exist 😨"
 
 DESCRIPTION RULES:
-- Hindi only
+- English only
 - 2 to 4 short lines
 - SEO optimized naturally
 - Add emotional curiosity
 - Mention topic keywords naturally
 - Sound engaging and cinematic
 - Encourage comments subtly
-- Add relevant hashtags at the end
+- Add MINIMUM 4 hashtags at the end
 - Avoid keyword stuffing
 
-DESCRIPTION STYLE EXAMPLE:
-"क्या ये सच दुनिया से छुपाया गया था? 😨  
-इस रहस्य ने वैज्ञानिकों को भी डरा दिया।  
-#shorts #mystery #spacefacts"
+DESCRIPTION EXAMPLE:
+"Nobody knows what really happened here... 😨
+Even scientists were shocked by this discovery.
+Would you enter this place?
+
+#shorts #mystery #facts #viral"
 
 TAG RULES:
 - Generate EXACTLY 5 tags
-- Hindi tags only
+- English only
 - Include:
   1 broad viral tag
   2 topic-specific tags
   1 emotional curiosity tag
   1 Shorts algorithm style tag
-  Use tags commonly associated with viral Hindi Shorts content.
-- Tags should resemble high-performing viral Shorts metadata
 - Mix SEO + curiosity
 - Avoid generic spam tags
 
 TAG EXAMPLE:
 [
-  "स्पेस फैक्ट्स",
-  "रहस्यमयी सच",
-  "हिंदी शॉर्ट्स",
-  "डरावने तथ्य",
-  "वायरल शॉर्ट्स"
+  #shorts ,
+#viralshorts,
+#mystery,
+#scaryfacts,
+#hindishorts,
 ]
 
 IMPORTANT:
@@ -152,13 +129,48 @@ not just explain the topic.
       response.choices[0]
         .message.content;
 
-const cleaned = text
-  .replace(/```json/g, "")
-  .replace(/```/g, "")
-  .trim();
+    let cleaned = text.trim();
 
-return JSON.parse(cleaned);
+    cleaned = cleaned
 
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+
+      .replace(/\r/g, "")
+      .replace(/\n/g, " ")
+      .replace(/\t/g, " ")
+
+      .replace(/\s+/g, " ")
+
+      .trim();
+
+    const jsonMatch =
+      cleaned.match(/\{[\s\S]*\}/);
+
+    if (!jsonMatch) {
+
+      throw new Error(
+        "No valid JSON found"
+      );
+
+    }
+
+    const metadata =
+      JSON.parse(jsonMatch[0]);
+
+    if (
+      !metadata.title ||
+      !metadata.description ||
+      !Array.isArray(metadata.tags)
+    ) {
+
+      throw new Error(
+        "Invalid metadata structure"
+      );
+
+    }
+
+    return metadata;
 
   } catch (error) {
 
@@ -170,13 +182,18 @@ return JSON.parse(cleaned);
 
     return {
 
-      title: topic,
+      title:
+        "This Mystery Should Not Exist 😨",
 
-      description: topic,
+      description:
+        "Nobody can explain what really happened here...\n\n#shorts #viral #mystery #facts",
 
       tags: [
-        "shorts",
-        "viral"
+       #shorts ,
+#viralshorts ,
+#mystery,
+#scaryfacts,
+#hindishorts
       ]
 
     };
